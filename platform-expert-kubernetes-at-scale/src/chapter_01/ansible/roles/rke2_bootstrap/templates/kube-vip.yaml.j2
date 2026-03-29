@@ -1,0 +1,73 @@
+# kube-vip Static Pod Manifest
+# Deployed to /var/lib/rancher/rke2/agent/pod-manifests/kube-vip.yaml
+# Provides a floating VIP for the Kubernetes API server in ARP mode.
+#
+# kube-vip must run BEFORE the CNI is installed, so it uses hostNetwork.
+# Leader election uses Kubernetes Lease objects in kube-system namespace.
+#
+# Image version pinned from constants.yaml: {{ versions.kube_vip }}
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-vip
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: kube-vip
+    app.kubernetes.io/component: control-plane-vip
+spec:
+  hostNetwork: true
+  containers:
+    - name: kube-vip
+      image: ghcr.io/kube-vip/kube-vip:{{ versions.kube_vip }}
+      imagePullPolicy: IfNotPresent
+      args:
+        - manager
+      env:
+        # VIP address — from constants.yaml
+        - name: vip_address
+          value: "{{ cluster.api_vip }}"
+        # Port to health-check (API server port)
+        - name: port
+          value: "{{ cluster.api_port | string }}"
+        # Interface for the VIP — management NIC
+        - name: vip_interface
+          value: "eth0"
+        # ARP mode (no BGP dependency at bootstrap time)
+        - name: vip_arp
+          value: "true"
+        # Disable BGP — not available until Cilium is running
+        - name: bgp_enable
+          value: "false"
+        # Leader election via Kubernetes Leases
+        - name: vip_leaderelection
+          value: "true"
+        # Lease name and namespace
+        - name: vip_leasename
+          value: "kube-vip-lease"
+        - name: vip_leaseduration
+          value: "5"
+        - name: vip_renewdeadline
+          value: "3"
+        - name: vip_retryperiod
+          value: "1"
+        # Enable Services load balancing (optional, for future use)
+        - name: svc_enable
+          value: "false"
+        # Prometheus metrics
+        - name: prometheus_server
+          value: ":2112"
+      securityContext:
+        capabilities:
+          add:
+            - NET_ADMIN  # Required for adding VIP to interface
+            - NET_RAW    # Required for sending Gratuitous ARP
+      volumeMounts:
+        - name: kubeconfig
+          mountPath: /etc/kubernetes/admin.conf
+          readOnly: true
+  volumes:
+    - name: kubeconfig
+      hostPath:
+        path: /etc/rancher/rke2/rke2.yaml
+        type: FileOrCreate

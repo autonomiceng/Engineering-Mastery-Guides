@@ -1,0 +1,37 @@
+---
+# rke2_bootstrap/tasks/main.yml
+# Renders RKE2 config and kube-vip static pod manifest.
+# This role runs on ALL server nodes before any are started.
+
+- name: Render RKE2 server configuration
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/rancher/rke2/config.yaml
+    mode: "0600"
+    owner: root
+    group: root
+
+- name: Create static pod manifests directory
+  ansible.builtin.file:
+    path: /var/lib/rancher/rke2/server/manifests
+    state: directory
+    mode: "0700"
+    owner: root
+    group: root
+
+- name: Create kube-vip pod manifests directory
+  ansible.builtin.file:
+    path: /var/lib/rancher/rke2/agent/pod-manifests
+    state: directory
+    mode: "0700"
+    owner: root
+    group: root
+    recurse: true
+
+- name: Render kube-vip static pod manifest
+  ansible.builtin.template:
+    src: kube-vip.yaml.j2
+    dest: /var/lib/rancher/rke2/agent/pod-manifests/kube-vip.yaml
+    mode: "0600"
+    owner: root
+    group: root

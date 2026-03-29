@@ -1,0 +1,13 @@
+---
+# 01-host-prep.yml
+# Prepares Ubuntu 24.04 hosts for RKE2 installation.
+# Configures kernel modules, sysctl, firewall, and NTP.
+
+- name: Prepare hosts for RKE2
+  hosts: servers
+  become: true
+  vars_files:
+    - ../../constants.yaml
+
+  roles:
+    - role: ../roles/host_prep

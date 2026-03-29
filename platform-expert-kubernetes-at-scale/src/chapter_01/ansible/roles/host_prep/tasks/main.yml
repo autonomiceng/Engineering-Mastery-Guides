@@ -1,0 +1,109 @@
+---
+# host_prep/tasks/main.yml
+# OS-level prerequisites for RKE2 and Kubernetes networking.
+
+- name: Ensure required kernel modules are loaded at boot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      overlay
+      br_netfilter
+      ip_tables
+      ip6_tables
+      nf_conntrack
+    mode: "0644"
+
+- name: Load kernel modules immediately
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+    - ip_tables
+    - ip6_tables
+    - nf_conntrack
+
+- name: Configure sysctl for Kubernetes networking
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-k8s.conf
+    reload: true
+  loop:
+    - { key: "net.bridge.bridge-nf-call-iptables", value: "1" }
+    - { key: "net.bridge.bridge-nf-call-ip6tables", value: "1" }
+    - { key: "net.ipv4.ip_forward", value: "1" }
+    - { key: "net.ipv6.conf.all.forwarding", value: "1" }
+    # Increase connection tracking table for large clusters
+    - { key: "net.netfilter.nf_conntrack_max", value: "131072" }
+    # Increase inotify watches for etcd and kubelet
+    - { key: "fs.inotify.max_user_watches", value: "524288" }
+    - { key: "fs.inotify.max_user_instances", value: "8192" }
+
+- name: Disable swap (required by kubelet)
+  ansible.builtin.command: swapoff -a
+  changed_when: false
+
+- name: Remove swap entries from fstab
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '^\S+\s+\S+\s+swap\s+'
+    state: absent
+
+- name: Ensure chrony (NTP) is installed and running
+  ansible.builtin.apt:
+    name: chrony
+    state: present
+    update_cache: true
+
+- name: Enable and start chrony
+  ansible.builtin.systemd:
+    name: chrony
+    enabled: true
+    state: started
+
+- name: Configure UFW — allow RKE2 required ports
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+    comment: "{{ item.comment }}"
+  loop:
+    - { port: "6443", proto: "tcp", comment: "Kubernetes API server" }
+    - { port: "9345", proto: "tcp", comment: "RKE2 supervisor API" }
+    - { port: "2379:2380", proto: "tcp", comment: "etcd client and peer" }
+    - { port: "10250", proto: "tcp", comment: "Kubelet API" }
+    - { port: "10259", proto: "tcp", comment: "kube-scheduler" }
+    - { port: "10257", proto: "tcp", comment: "kube-controller-manager" }
+    - { port: "8472", proto: "udp", comment: "VXLAN (if used by CNI)" }
+    - { port: "51820:51821", proto: "udp", comment: "WireGuard (if used by CNI)" }
+    - { port: "4240", proto: "tcp", comment: "Cilium health checks" }
+    - { port: "4244", proto: "tcp", comment: "Hubble Relay" }
+    - { port: "4245", proto: "tcp", comment: "Hubble UI" }
+    - { port: "6060", proto: "tcp", comment: "Cilium agent health" }
+    - { port: "9962:9964", proto: "tcp", comment: "Cilium Prometheus metrics" }
+
+- name: Enable UFW (default deny incoming)
+  community.general.ufw:
+    state: enabled
+    default: deny
+    direction: incoming
+
+- name: Install prerequisite packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - apt-transport-https
+      - ca-certificates
+      - open-iscsi
+      - nfs-common
+      - util-linux
+    state: present
+    update_cache: true
+
+- name: Enable and start iscsid (required by Longhorn)
+  ansible.builtin.systemd:
+    name: iscsid
+    enabled: true
+    state: started

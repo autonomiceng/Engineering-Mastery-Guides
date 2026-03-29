@@ -1,0 +1,45 @@
+---
+# rke2_install/tasks/main.yml
+# Installs a pinned RKE2 server binary.
+# The version comes from constants.yaml — never hardcode it here.
+
+- name: Create RKE2 config directory
+  ansible.builtin.file:
+    path: /etc/rancher/rke2
+    state: directory
+    mode: "0755"
+
+- name: Create RKE2 data directory
+  ansible.builtin.file:
+    path: /var/lib/rancher/rke2
+    state: directory
+    mode: "0755"
+
+- name: Download RKE2 install script
+  ansible.builtin.get_url:
+    url: https://get.rke2.io
+    dest: /tmp/rke2-install.sh
+    mode: "0755"
+
+- name: Install RKE2 server with pinned version
+  ansible.builtin.command:
+    cmd: /tmp/rke2-install.sh
+  environment:
+    INSTALL_RKE2_VERSION: "{{ versions.rke2 }}"
+    INSTALL_RKE2_TYPE: server
+  args:
+    creates: /usr/local/bin/rke2
+
+- name: Verify installed RKE2 version
+  ansible.builtin.command: /usr/local/bin/rke2 --version
+  register: rke2_version_check
+  changed_when: false
+
+- name: Display installed RKE2 version
+  ansible.builtin.debug:
+    var: rke2_version_check.stdout
+
+- name: Clean up install script
+  ansible.builtin.file:
+    path: /tmp/rke2-install.sh
+    state: absent

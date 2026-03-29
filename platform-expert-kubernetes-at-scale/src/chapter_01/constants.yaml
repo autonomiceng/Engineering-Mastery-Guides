@@ -1,0 +1,83 @@
+# constants.yaml — Single Source of Truth
+# Consumed by both OpenTofu (yamldecode) and Ansible (vars_files)
+# DO NOT duplicate these values in group_vars, Helm values, or Terraform variables.
+
+---
+# Network Configuration
+vlans:
+  infra:
+    id: 10
+    cidr: "10.20.10.0/24"
+    gateway: "10.20.10.1"
+    description: "Infrastructure and management"
+  storage:
+    id: 15
+    cidr: "10.20.15.0/24"
+    gateway: "10.20.15.1"
+    description: "Storage backend (Synology, Longhorn future)"
+  services:
+    id: 30
+    cidr: "10.20.30.0/24"
+    gateway: "10.20.30.1"
+    description: "Service and Gateway VIPs"
+  trusted:
+    id: 40
+    cidr: "10.20.40.0/24"
+    gateway: "10.20.40.1"
+    description: "Trusted clients"
+  guest:
+    id: 50
+    cidr: "10.20.50.0/24"
+    gateway: "10.20.50.1"
+    description: "Guest and IoT"
+
+# Kubernetes Cluster Networking
+cluster:
+  pod_cidr: "10.42.0.0/16"
+  service_cidr: "10.43.0.0/16"
+  api_vip: "10.20.10.10"
+  api_port: 6443
+  api_dns: "k8s-api.lab.home.arpa"
+
+# BGP Configuration
+bgp:
+  cluster_asn: 64512
+  router_asn: 64511
+  router_peer_ip: "10.20.10.1"
+
+# DNS and Domain
+dns:
+  base_domain: "home.arpa"
+  lab_domain: "lab.home.arpa"
+  prod_domain: "prod.home.arpa"
+  synology_dns_ip: "10.20.10.5"
+  adguard_ip: "10.20.10.6"
+
+# Version Pins (freeze before bootstrap)
+versions:
+  rke2: "v1.34.3+rke2r1"
+  cilium_chart: "1.19.2"
+  gateway_api_crds: "v1.4.1"
+  longhorn_chart: "1.10.1"
+  cert_manager_chart: "1.19.2"
+  argocd_chart: "3.3.5"
+  rancher_chart: "2.13.2"
+  kube_vip: "v1.0.6"
+
+# Node Configuration
+nodes:
+  gmk-node-01:
+    ip: "10.20.10.11"
+    role: server
+    eth0_ip: "10.20.10.11"
+    eth1_ip: "10.20.15.11"
+  gmk-node-02:
+    ip: "10.20.10.12"
+    role: server
+    eth0_ip: "10.20.10.12"
+    eth1_ip: "10.20.15.12"
+  gmk-node-03:
+    ip: "10.20.10.13"
+    role: server
+    eth0_ip: "10.20.10.13"
+    eth1_ip: "10.20.15.13"

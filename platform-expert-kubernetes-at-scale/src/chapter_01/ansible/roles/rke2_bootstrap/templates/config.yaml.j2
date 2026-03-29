@@ -1,0 +1,49 @@
+# RKE2 Server Configuration
+# Rendered by Ansible from constants.yaml — do not edit manually.
+#
+# Key decisions:
+#   - cni: none — we install Cilium separately (Chapter 4)
+#   - tls-san includes VIP and DNS for kube-vip and kubeconfig portability
+#   - etcd snapshot to S3-compatible target (Synology)
+#   - CIS profile enabled for security hardening
+
+# Disable default CNI — Cilium will be installed post-bootstrap
+cni: none
+
+# TLS SANs for the API server certificate
+# The VIP and DNS name must be in SANs for kube-vip and external access
+tls-san:
+  - "{{ cluster.api_vip }}"
+  - "{{ cluster.api_dns }}"
+{% for name, node in nodes.items() %}
+  - "{{ node.ip }}"
+{% endfor %}
+
+# Cluster networking
+cluster-cidr: "{{ cluster.pod_cidr }}"
+service-cidr: "{{ cluster.service_cidr }}"
+
+# Disable kube-proxy — Cilium replaces it with eBPF
+disable-kube-proxy: true
+
+# Disable bundled components we're replacing
+disable:
+  - rke2-ingress-nginx
+  - rke2-metrics-server
+
+# etcd configuration
+etcd-expose-metrics: true
+
+# CIS hardening profile
+profile: cis
+
+# Write kubeconfig with appropriate permissions
+write-kubeconfig-mode: "0600"
+
+# Node labels
+node-label:
+  - "node-role.kubernetes.io/control-plane=true"
+
+# Kubelet args for cgroup v2
+kubelet-arg:
+  - "max-pods=110"

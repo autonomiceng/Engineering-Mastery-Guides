@@ -1,0 +1,96 @@
+---
+# 03-rke2-bootstrap.yml
+# Bootstraps a 3-node HA RKE2 cluster with kube-vip.
+#
+# Execution order:
+#   1. Render RKE2 config and kube-vip manifest on ALL servers
+#   2. Start the first server (initializes etcd, generates join token)
+#   3. Retrieve the join token
+#   4. Join remaining servers using the VIP as the registration endpoint
+
+- name: Configure all server nodes
+  hosts: servers
+  become: true
+  vars_files:
+    - ../../constants.yaml
+
+  roles:
+    - role: ../roles/rke2_bootstrap
+
+- name: Initialize first control-plane node
+  hosts: first_server
+  become: true
+  vars_files:
+    - ../../constants.yaml
+  tasks:
+    - name: Enable and start RKE2 server
+      ansible.builtin.systemd:
+        name: rke2-server
+        enabled: true
+        state: started
+
+    - name: Wait for RKE2 to become ready
+      ansible.builtin.wait_for:
+        path: /var/lib/rancher/rke2/server/node-token
+        state: present
+        timeout: 300
+
+    - name: Wait for API server to respond
+      ansible.builtin.uri:
+        url: "https://{{ cluster.api_vip }}:{{ cluster.api_port }}/healthz"
+        validate_certs: false
+        status_code: 200
+      register: api_health
+      retries: 30
+      delay: 10
+      until: api_health.status == 200
+
+    - name: Read join token
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/rke2/server/node-token
+      register: join_token_raw
+
+    - name: Set join token fact
+      ansible.builtin.set_fact:
+        rke2_join_token: "{{ join_token_raw.content | b64decode | trim }}"
+
+    - name: Store join token for other plays
+      ansible.builtin.add_host:
+        name: token_holder
+        rke2_join_token: "{{ rke2_join_token }}"
+
+- name: Join remaining server nodes
+  hosts: joining_servers
+  become: true
+  serial: 1
+  vars_files:
+    - ../../constants.yaml
+  tasks:
+    - name: Write join token to RKE2 config
+      ansible.builtin.lineinfile:
+        path: /etc/rancher/rke2/config.yaml
+        regexp: "^token:"
+        line: "token: {{ hostvars['token_holder']['rke2_join_token'] }}"
+
+    - name: Set server URL to VIP
+      ansible.builtin.lineinfile:
+        path: /etc/rancher/rke2/config.yaml
+        regexp: "^server:"
+        line: "server: https://{{ cluster.api_vip }}:9345"
+
+    - name: Enable and start RKE2 server
+      ansible.builtin.systemd:
+        name: rke2-server
+        enabled: true
+        state: started
+
+    - name: Wait for node to join the cluster
+      ansible.builtin.command: >
+        /var/lib/rancher/rke2/bin/kubectl
+        --kubeconfig /etc/rancher/rke2/rke2.yaml
+        get node {{ inventory_hostname }}
+      register: node_check
+      retries: 30
+      delay: 10
+      until: node_check.rc == 0
+      changed_when: false
