@@ -1,0 +1,34 @@
+# OpenTofu / Terraform
+.terraform/
+.tofu/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+.terraform.lock.hcl
+
+# Ansible / Python
+*.retry
+ansible.log
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Secrets and local env files
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.p12
+*.agekey
+secrets.yaml
+secrets*.yaml
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,32 @@
+name: Repository Lint
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@v1
+
+      - name: Check OpenTofu formatting
+        run: tofu fmt -check -recursive platform-expert-kubernetes-at-scale/src
+
+      - name: Install Ansible lint tooling
+        run: pip install ansible-core ansible-lint
+
+      - name: Lint Ansible content
+        run: |
+          find platform-expert-kubernetes-at-scale/src -type d -name ansible -print0 | \
+            xargs -0 -r ansible-lint
