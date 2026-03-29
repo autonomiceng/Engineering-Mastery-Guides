@@ -1,0 +1,18 @@
+---
+# 01-sops-setup.yml
+# Generates an age keypair and creates the .sops.yaml configuration.
+# Run this on the OPERATOR WORKSTATION, not on cluster nodes.
+#
+# Prerequisites:
+#   - age installed: https://github.com/FiloSottile/age
+#   - sops installed: https://github.com/getsops/sops
+
+- name: Set up SOPS + age encryption
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../constants.yaml
+
+  roles:
+    - role: ../roles/sops_setup

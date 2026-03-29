@@ -1,0 +1,41 @@
+# App of Apps — Root Application
+# This is the ONE Application you apply manually after bootstrapping ArgoCD.
+# It discovers and creates all platform Applications from the platform-apps directory.
+#
+# Apply: kubectl apply -f app-of-apps.yaml
+# After this, ArgoCD manages everything else via GitOps.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-root
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: platform
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+
+  source:
+    # Point to your actual repo URL
+    repoURL: https://github.com/your-org/home-lab.git
+    targetRevision: main
+    path: k8s/platform-apps
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 3m

@@ -1,0 +1,66 @@
+---
+# sops_setup/tasks/main.yml
+# Generates an age keypair and renders .sops.yaml.
+# The private key is stored locally and NEVER committed to Git.
+
+- name: Create SOPS age key directory
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.config/sops/age"
+    state: directory
+    mode: "0700"
+
+- name: Check if age key already exists
+  ansible.builtin.stat:
+    path: "{{ ansible_env.HOME }}/.config/sops/age/keys.txt"
+  register: age_key_file
+
+- name: Generate age keypair
+  ansible.builtin.command:
+    cmd: age-keygen -o {{ ansible_env.HOME }}/.config/sops/age/keys.txt
+  when: not age_key_file.stat.exists
+  register: age_keygen_output
+
+- name: Set permissions on age key
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.config/sops/age/keys.txt"
+    mode: "0600"
+
+- name: Read age public key from key file
+  ansible.builtin.shell:
+    cmd: grep "^# public key:" {{ ansible_env.HOME }}/.config/sops/age/keys.txt | awk '{print $4}'
+  register: age_public_key
+  changed_when: false
+
+- name: Display age public key
+  ansible.builtin.debug:
+    msg: |
+      Age public key: {{ age_public_key.stdout }}
+      Private key location: {{ ansible_env.HOME }}/.config/sops/age/keys.txt
+
+      IMPORTANT: Back up the private key to a secure offline location (Synology, USB).
+      If you lose this key, you cannot decrypt any SOPS-encrypted secrets.
+
+- name: Render .sops.yaml configuration
+  ansible.builtin.template:
+    src: sops.yaml.j2
+    dest: "{{ playbook_dir }}/../../../../.sops.yaml"
+    mode: "0644"
+  vars:
+    sops_age_public_key: "{{ age_public_key.stdout }}"
+
+- name: Create .sops.yaml.example (safe to commit)
+  ansible.builtin.copy:
+    dest: "{{ playbook_dir }}/../../../../.sops.yaml.example"
+    mode: "0644"
+    content: |
+      # .sops.yaml — SOPS encryption rules
+      # Copy this file to .sops.yaml and replace the age public key
+      # with your actual operator age public key.
+      #
+      # Generate a key: age-keygen -o ~/.config/sops/age/keys.txt
+      # The public key is printed during generation.
+      creation_rules:
+        - path_regex: k8s/.*/secrets/.*\.enc\.yaml$
+          age: YOUR_AGE_PUBLIC_KEY_HERE
+        - path_regex: iac/ansible/.*\.enc\.yml$
+          age: YOUR_AGE_PUBLIC_KEY_HERE

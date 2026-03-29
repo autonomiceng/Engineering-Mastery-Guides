@@ -1,0 +1,91 @@
+---
+# argocd_install/tasks/main.yml
+# Installs ArgoCD via Helm and configures KSOPS for SOPS decryption.
+
+- name: Create ArgoCD namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ argocd_namespace }}"
+
+- name: Check if age key file exists
+  ansible.builtin.stat:
+    path: "{{ age_key_path }}"
+  register: age_key_stat
+
+- name: Fail if age key is missing
+  ansible.builtin.fail:
+    msg: |
+      Age private key not found at {{ age_key_path }}.
+      Run 01-sops-setup.yml first to generate the keypair.
+  when: not age_key_stat.stat.exists
+
+- name: Create SOPS age key Secret in cluster
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: sops-age-key
+        namespace: "{{ argocd_namespace }}"
+      type: Opaque
+      stringData:
+        keys.txt: "{{ lookup('file', age_key_path) }}"
+
+- name: Add ArgoCD Helm repository
+  kubernetes.core.helm_repository:
+    name: argo
+    repo_url: https://argoproj.github.io/argo-helm
+
+- name: Install ArgoCD via Helm
+  kubernetes.core.helm:
+    name: argocd
+    chart_ref: argo/argo-cd
+    chart_version: "{{ argocd_chart_version }}"
+    release_namespace: "{{ argocd_namespace }}"
+    create_namespace: false
+    values: "{{ lookup('file', playbook_dir + '/../../k8s/argocd/helm-values.yaml') | from_yaml }}"
+    wait: true
+    timeout: 600s
+
+- name: Wait for ArgoCD server to be ready
+  kubernetes.core.k8s_info:
+    kind: Deployment
+    name: argocd-server
+    namespace: "{{ argocd_namespace }}"
+  register: argocd_server
+  retries: 30
+  delay: 10
+  until:
+    - argocd_server.resources | length > 0
+    - argocd_server.resources[0].status.readyReplicas is defined
+    - argocd_server.resources[0].status.readyReplicas >= 1
+
+- name: Retrieve ArgoCD initial admin password
+  kubernetes.core.k8s_info:
+    kind: Secret
+    name: argocd-initial-admin-secret
+    namespace: "{{ argocd_namespace }}"
+  register: argocd_admin_secret
+
+- name: Display ArgoCD access information
+  ansible.builtin.debug:
+    msg: |
+      ArgoCD is installed and ready.
+
+      Initial admin password:
+        {{ argocd_admin_secret.resources[0].data.password | b64decode }}
+
+      Access (port-forward until Gateway is configured):
+        kubectl -n {{ argocd_namespace }} port-forward svc/argocd-server 8080:443
+        Open: https://localhost:8080
+        Login: admin / <password above>
+
+      Next steps:
+        1. Apply the App of Apps: kubectl apply -f k8s/platform-apps/app-of-apps.yaml
+        2. Configure Gateway route for ArgoCD (Chapter 4)
+        3. Change the admin password and configure SSO

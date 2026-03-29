@@ -1,0 +1,36 @@
+# AppProject: platform
+# Defines the trust boundary for platform infrastructure Applications.
+# Platform team can deploy to any namespace and create cluster-scoped resources.
+
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  description: Platform infrastructure components (cert-manager, gateway, observability, etc.)
+
+  # Allowed source repositories
+  sourceRepos:
+    - '*'  # Restrict to your actual repo URL in production
+
+  # Allowed destinations
+  destinations:
+    - namespace: '*'
+      server: https://kubernetes.default.svc
+
+  # Allow cluster-scoped resources (CRDs, ClusterRoles, Namespaces, etc.)
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  # Allow all namespaced resources
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  # Orphaned resource monitoring
+  orphanedResources:
+    warn: true

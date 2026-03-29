@@ -1,0 +1,24 @@
+---
+# 02-argocd-bootstrap.yml
+# Bootstraps ArgoCD on the RKE2 cluster.
+# This is a ONE-TIME operation. After ArgoCD is running, it self-manages via GitOps.
+#
+# Prerequisites:
+#   - Working RKE2 cluster with CNI (from Chapter 1 + Chapter 4)
+#   - age keypair generated (from 01-sops-setup.yml)
+#   - kubectl and helm available on operator workstation
+#   - kubeconfig set to the cluster VIP
+
+- name: Bootstrap ArgoCD with KSOPS support
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../constants.yaml
+  vars:
+    argocd_namespace: argocd
+    argocd_chart_version: "{{ versions.argocd_chart }}"
+    age_key_path: "{{ ansible_env.HOME }}/.config/sops/age/keys.txt"
+
+  roles:
+    - role: ../roles/argocd_install

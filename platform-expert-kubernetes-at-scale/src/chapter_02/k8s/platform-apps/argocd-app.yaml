@@ -1,0 +1,50 @@
+# ArgoCD Self-Management Application
+# After bootstrap, ArgoCD manages its OWN deployment via GitOps.
+# Changes to ArgoCD Helm values in Git are automatically synced.
+#
+# Sync wave -2: ArgoCD must be updated before platform apps.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+
+  source:
+    repoURL: https://github.com/your-org/home-lab.git
+    targetRevision: main
+    path: k8s/argocd
+    # Kustomize renders the namespace, AppProject, and KSOPS-decrypted secrets
+    kustomize: {}
+
+  # Helm source for the ArgoCD chart itself
+  # Use multiple sources if ArgoCD chart + local overlays are needed
+  # For simplicity, this example uses the Kustomize path which references
+  # the Helm values used during bootstrap.
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+
+  syncPolicy:
+    automated:
+      prune: false       # Never auto-prune ArgoCD's own resources
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+
+  # Ignore fields managed by ArgoCD itself
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas  # Allow HPA to manage replicas if configured later

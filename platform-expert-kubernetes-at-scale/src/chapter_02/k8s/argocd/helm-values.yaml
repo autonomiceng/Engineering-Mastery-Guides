@@ -1,0 +1,129 @@
+# ArgoCD Helm Values
+# Used by both the bootstrap Helm install and the ArgoCD self-management Application.
+# Pin the chart version in the Application spec, not here.
+
+## Global
+global:
+  logging:
+    format: json
+    level: info
+
+## Server
+server:
+  replicas: 2
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false  # Enable after Prometheus is installed (Chapter 8)
+
+## Repo Server — KSOPS/SOPS integration
+repoServer:
+  replicas: 2
+  metrics:
+    enabled: true
+
+  # Mount the SOPS age key for KSOPS decryption
+  volumes:
+    - name: sops-age-key
+      secret:
+        secretName: sops-age-key
+
+  volumeMounts:
+    - name: sops-age-key
+      mountPath: /home/argocd/.config/sops/age/
+      readOnly: true
+
+  # Environment variable for SOPS to find the age key
+  env:
+    - name: SOPS_AGE_KEY_FILE
+      value: /home/argocd/.config/sops/age/keys.txt
+    # Enable Kustomize with KSOPS plugin
+    - name: XDG_CONFIG_HOME
+      value: /home/argocd/.config
+    - name: KUSTOMIZE_PLUGIN_HOME
+      value: /home/argocd/.config/kustomize/plugin
+
+  # Init container to install KSOPS into the repo-server
+  initContainers:
+    - name: install-ksops
+      image: viaductoss/ksops:v4.3.2
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          echo "Installing KSOPS and SOPS..."
+          cp /usr/local/bin/ksops /custom-tools/ksops
+          cp /usr/local/bin/sops /custom-tools/sops
+          echo "KSOPS installation complete."
+      volumeMounts:
+        - name: custom-tools
+          mountPath: /custom-tools
+
+  extraContainers: []
+
+  # Additional volume for custom tools
+  extraVolumes:
+    - name: custom-tools
+      emptyDir: {}
+
+  extraVolumeMounts:
+    - name: custom-tools
+      mountPath: /usr/local/bin/ksops
+      subPath: ksops
+    - name: custom-tools
+      mountPath: /usr/local/bin/sops
+      subPath: sops
+
+## Application Controller
+controller:
+  replicas: 1  # Single instance with leader election
+  metrics:
+    enabled: true
+
+## ApplicationSet Controller
+applicationSet:
+  replicas: 1
+  metrics:
+    enabled: true
+
+## Notifications Controller
+notifications:
+  enabled: true
+  metrics:
+    enabled: true
+
+## Redis
+redis:
+  enabled: true
+
+## Dex (SSO) — disable for initial bootstrap, enable later
+dex:
+  enabled: false
+
+## Config
+configs:
+  params:
+    # Use server-side diff for more accurate sync detection
+    controller.diff.server.side: "true"
+
+  cm:
+    # Reconciliation interval (default: 180s / 3 minutes)
+    timeout.reconciliation: "180"
+
+    # Kustomize with KSOPS support
+    kustomize.buildOptions: "--enable-alpha-plugins --enable-exec"
+
+    # Resource tracking method
+    application.resourceTrackingMethod: annotation
+
+    # Admin account enabled for bootstrap; disable after SSO setup
+    admin.enabled: "true"
+
+  rbac:
+    # Default policy for authenticated users
+    policy.default: role:readonly
+    policy.csv: |
+      p, role:platform-admin, applications, *, */*, allow
+      p, role:platform-admin, clusters, *, *, allow
+      p, role:platform-admin, repositories, *, *, allow
+      p, role:platform-admin, projects, *, *, allow
+      g, admin, role:platform-admin

@@ -1,0 +1,50 @@
+# Rancher Application
+# Deploys Rancher behind the shared Cilium Gateway.
+# Requires: cert-manager (Chapter 4), Gateway (Chapter 4), Longhorn (Chapter 5).
+#
+# Sync wave 2: Deploy after core platform components.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: rancher
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+
+  source:
+    repoURL: https://releases.rancher.com/server-charts/latest
+    chart: rancher
+    targetRevision: "2.13.2"  # Pin from constants.yaml versions.rancher_chart
+    helm:
+      valuesObject:
+        hostname: rancher.lab.home.arpa
+        replicas: 1                       # Single replica for homelab
+        bootstrapPassword: "changeme"     # Override with SOPS secret in production
+        ingress:
+          enabled: false                  # We use Gateway API, not Ingress
+        tls: external                     # cert-manager handles TLS via Gateway
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cattle-system
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
